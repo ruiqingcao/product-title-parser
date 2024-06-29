@@ -19,6 +19,11 @@ from gliner_spacy.pipeline import GlinerSpacy
 import warnings
 import threading
 warnings.filterwarnings("ignore", message="The sentencepiece tokenizer")
+import os
+
+# At the top of your script, after imports
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CATEGORIES_FILE = os.path.join(BASE_DIR, 'google_categories(v2).txt')
 
 # Configuration for GLiNER integration
 custom_spacy_config = {
@@ -67,7 +72,7 @@ def extract_entities(text):
     return entities if entities else ["No specific entities found"]
 
 # Load Google's content categories
-with open('google_categories(v2).txt', 'r') as f:
+with open(CATEGORIES_FILE, 'r') as f:
     google_categories = [line.strip() for line in f]
 
 # Function to precompute category embeddings
