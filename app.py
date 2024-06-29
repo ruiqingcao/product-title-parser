@@ -14,6 +14,10 @@ import threading
 
 warnings.filterwarnings("ignore", message="The sentencepiece tokenizer")
 
+# Initialize Dash app with Bootstrap theme and Font Awesome
+external_stylesheets = [dbc.themes.DARKLY, 'https://use.fontawesome.com/releases/v5.8.1/css/all.css']
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+
 server = app.server
 
 # Configuration for GLiNER integration
@@ -195,10 +199,6 @@ def batch_process_keywords(keywords, batch_size=32):
         processed_data['Google Content Topics'].extend(Google_Content_Topics)
     
     return processed_data
-
-# Initialize Dash app with Bootstrap theme and Font Awesome
-external_stylesheets = [dbc.themes.DARKLY, 'https://use.fontawesome.com/releases/v5.8.1/css/all.css']
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 # Main layout of the dashboard
 app.layout = dbc.Container([
