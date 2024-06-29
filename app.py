@@ -1,12 +1,5 @@
 import dash
 import dash_bootstrap_components as dbc
-
-# Initialize Dash app with Bootstrap theme and Font Awesome
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, 'https://use.fontawesome.com/releases/v5.8.1/css/all.css'])
-
-# Create server variable
-server = app.server
-
 import pandas as pd
 from dash import dcc, html
 from dash.dash_table import DataTable
@@ -17,11 +10,17 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from gliner_spacy.pipeline import GlinerSpacy
 import warnings
-import threading
-warnings.filterwarnings("ignore", message="The sentencepiece tokenizer")
 import os
 
-# At the top of your script, after imports
+warnings.filterwarnings("ignore", message="The sentencepiece tokenizer")
+
+# Initialize Dash app with Bootstrap theme and Font Awesome
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, 'https://use.fontawesome.com/releases/v5.8.1/css/all.css'])
+
+# Create server variable
+server = app.server
+
+# Reference absolute file path 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CATEGORIES_FILE = os.path.join(BASE_DIR, 'google_categories(v2).txt')
 
@@ -37,47 +36,31 @@ custom_spacy_config = {
 # Model variables
 nlp = None
 sentence_model = None
-model_lock = threading.Lock()
-models_loaded = threading.Event()
 
 # Function to load models
 def load_models():
     global nlp, sentence_model
-    with model_lock:
-        if nlp is None:
-            nlp = spacy.blank("en")
-            nlp.add_pipe("gliner_spacy", config=custom_spacy_config)
-        if sentence_model is None:
-            sentence_model = SentenceTransformer('all-roberta-large-v1')
-    models_loaded.set()
-
-# Start loading models in a separate thread
-threading.Thread(target=load_models).start()
-
-# Function to ensure models are loaded
-def ensure_models_loaded():
-    models_loaded.wait()
-
-# Function to perform NER using GLiNER with spaCy
-def perform_ner(text):
-    ensure_models_loaded()
-    doc = nlp(text)
-    return [(ent.text, ent.label_) for ent in doc.ents]
-
-# Function to extract entities using GLiNER with spaCy
-def extract_entities(text):
-    ensure_models_loaded()
-    doc = nlp(text)
-    entities = [(ent.text, ent.label_) for ent in doc.ents]
-    return entities if entities else ["No specific entities found"]
+    nlp = spacy.blank("en")
+    nlp.add_pipe("gliner_spacy", config=custom_spacy_config)
+    sentence_model = SentenceTransformer('all-roberta-large-v1')
 
 # Load Google's content categories
 with open(CATEGORIES_FILE, 'r') as f:
     google_categories = [line.strip() for line in f]
 
+# Function to perform NER using GLiNER with spaCy
+def perform_ner(text):
+    doc = nlp(text)
+    return [(ent.text, ent.label_) for ent in doc.ents]
+
+# Function to extract entities using GLiNER with spaCy
+def extract_entities(text):
+    doc = nlp(text)
+    entities = [(ent.text, ent.label_) for ent in doc.ents]
+    return entities if entities else ["No specific entities found"]
+
 # Function to precompute category embeddings
 def compute_category_embeddings():
-    ensure_models_loaded()
     return sentence_model.encode(google_categories)
 
 # Function to perform topic modeling using sentence transformers
@@ -163,7 +146,6 @@ def sort_by_keyword_feature(f):
 
 # Optimized batch processing of keywords
 def batch_process_keywords(keywords, batch_size=32):
-    ensure_models_loaded()
     processed_data = {'Keywords': [], 'Intent': [], 'NER Entities': [], 'Google Content Topics': []}
     
     # Precompute keyword embeddings once
@@ -207,6 +189,7 @@ def batch_process_keywords(keywords, batch_size=32):
 
 # Main layout of the dashboard
 app.layout = dbc.Container([
+    dcc.Store(id='models-loaded', data=False),
     dbc.NavbarSimple(
         children=[
             dbc.NavItem(dbc.NavLink("About", href="#about")),
@@ -221,16 +204,22 @@ app.layout = dbc.Container([
     
     dbc.Row(dbc.Col(html.H1('Keyword Intent, Named Entity Recognition (NER), & Google Topic Modeling Dashboard', className='text-center text-light mb-4 mt-4'))),
 
-        dbc.Row([
+    dbc.Row([
         dbc.Col([
+            dbc.Alert(
+                "Models are loading. This may take a few minutes. Please wait...",
+                id="loading-alert",
+                color="info",
+                is_open=True,
+            ),
             dbc.Label('Enter keywords (one per line, maximum of 100):', className='text-light'),
             dcc.Textarea(id='keyword-input', value='', style={'width': '100%', 'height': 100}),
-            dbc.Button('Submit', id='submit-button', color='primary', className='mb-3'),
+            dbc.Button('Submit', id='submit-button', color='primary', className='mb-3', disabled=True),
             dbc.Alert(id='alert', is_open=False, duration=4000, color='danger', className='my-2'),
             dbc.Alert(id='processing-alert', is_open=False, color='info', className='my-2'),
         ], width=6)
     ], justify='center'),
-
+    
     # Loading component
     dbc.Row([
         dbc.Col([
@@ -350,6 +339,19 @@ app.layout = dbc.Container([
     html.Div(id='dummy-output', style={'display': 'none'}),
 
 ], fluid=True)
+
+# Callback to load models and update the loading alert
+@app.callback(
+    [Output('models-loaded', 'data'),
+     Output('loading-alert', 'is_open'),
+     Output('submit-button', 'disabled')],
+    [Input('models-loaded', 'data')]
+)
+def load_models_callback(loaded):
+    if not loaded:
+        load_models()
+        return True, False, False
+    return loaded, False, False
 
 # Callback for smooth scrolling
 app.clientside_callback(
