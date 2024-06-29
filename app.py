@@ -1,24 +1,24 @@
-import pandas as pd
 import dash
+import dash_bootstrap_components as dbc
+
+# Initialize Dash app with Bootstrap theme and Font Awesome
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, 'https://use.fontawesome.com/releases/v5.8.1/css/all.css'])
+
+# Create server variable
+server = app.server
+
+import pandas as pd
 from dash import dcc, html
 from dash.dash_table import DataTable
 from dash.dependencies import Output, Input, State
 import plotly.express as px
-import dash_bootstrap_components as dbc
 import spacy
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from gliner_spacy.pipeline import GlinerSpacy
 import warnings
 import threading
-
 warnings.filterwarnings("ignore", message="The sentencepiece tokenizer")
-
-# Initialize Dash app with Bootstrap theme and Font Awesome
-external_stylesheets = [dbc.themes.DARKLY, 'https://use.fontawesome.com/releases/v5.8.1/css/all.css']
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-
-server = app.server
 
 # Configuration for GLiNER integration
 custom_spacy_config = {
