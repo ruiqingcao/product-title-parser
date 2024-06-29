@@ -506,5 +506,5 @@ def download_csv(n_clicks, processed_data):
     return dict(content=csv_string, filename="KeyIntentNER-T_keyword_analysis.csv")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080)) 
+    port = int(os.environ.get("PORT", 10000))  # Default to 10000 if PORT is not set
     app.run_server(debug=True, host='0.0.0.0', port=port)
