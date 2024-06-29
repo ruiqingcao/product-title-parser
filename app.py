@@ -505,5 +505,6 @@ def download_csv(n_clicks, processed_data):
     csv_string = df.to_csv(index=False, encoding='utf-8')
     return dict(content=csv_string, filename="KeyIntentNER-T_keyword_analysis.csv")
 
-if __name__ == '__main__':
-    app.run_server(debug=False, host='0.0.0.0', port=8080)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080)) 
+    app.run_server(debug=True, host='0.0.0.0', port=port)
