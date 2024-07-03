@@ -22,7 +22,7 @@ server = app.server
 
 # Reference absolute file path 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CATEGORIES_FILE = os.path.join(BASE_DIR, 'google_categories(v2).txt')
+CATEGORIES_FILE = os.path.join(BASE_DIR, 'google_categories.txt')
 
 # Configuration for GLiNER integration
 custom_spacy_config = {
@@ -222,17 +222,17 @@ def batch_process_keywords(keywords, batch_size=8):
 app.layout = dbc.Container([
     dcc.Store(id='models-loaded', data=False),
     dbc.NavbarSimple(
-        children=[
-            dbc.NavItem(dbc.NavLink("About", href="#about")),
-            dbc.NavItem(dbc.NavLink("Contact", href="#contact")),
-        ],
-        brand="KeyIntentNER-T",
-        brand_href="https://github.com/jeredhiggins/KeyIntentNER-T",
-        color="#151515",
-        dark=True,
-        brand_style={"background": "linear-gradient(to right, #ff7e5f, #feb47b)", "-webkit-background-clip": "text", "color": "transparent", "textShadow": "0 0 1px #ffffff, 0 0 3px #ff7e5f, 0 0 5px #ff7e5f"},
-    ),
-    
+    children=[
+        dbc.NavItem(dbc.NavLink("About", href="#about", external_link=True)),
+        dbc.NavItem(dbc.NavLink("Contact", href="#contact", external_link=True)),
+    ],
+    brand="KeyIntentNER-T",
+    brand_href="https://github.com/jeredhiggins/KeyIntentNER-T",
+    color="#151515",
+    dark=True,
+    brand_style={"background": "linear-gradient(to right, #ff7e5f, #feb47b)", "-webkit-background-clip": "text", "color": "transparent", "textShadow": "0 0 1px #ffffff, 0 0 3px #ff7e5f, 0 0 5px #ff7e5f"},
+),
+
     dbc.Row(dbc.Col(html.H1('Keyword Intent, Named Entity Recognition (NER), & Google Topic Modeling Dashboard', className='text-center text-light mb-4 mt-4'))),
 
     dbc.Row([
@@ -355,9 +355,27 @@ app.layout = dbc.Container([
         ], width=12)
     ], className="mt-4 mb-4"),
 
-    # Hidden divs for smooth scrolling
-    html.Div(id='dummy-input', style={'display': 'none'}),
-    html.Div(id='dummy-output', style={'display': 'none'}),
+# JS for smooth scrolling
+    html.Div([
+        html.Script('''
+            document.addEventListener("DOMContentLoaded", function() {
+                var links = document.querySelectorAll("a[href^='#']");
+                links.forEach(function(link) {
+                    link.addEventListener("click", function(e) {
+                        e.preventDefault();
+                        var targetId = this.getAttribute("href").substring(1);
+                        var targetElement = document.getElementById(targetId);
+                        if (targetElement) {
+                            targetElement.scrollIntoView({
+                                behavior: "smooth",
+                                block: "start"
+                            });
+                        }
+                    });
+                });
+            });
+        ''')
+    ]),
 
 ], fluid=True)
 
@@ -506,6 +524,6 @@ def download_csv(n_clicks, processed_data):
     csv_string = df.to_csv(index=False, encoding='utf-8')
     return dict(content=csv_string, filename="KeyIntentNER-T_keyword_analysis.csv")
 
+# Modified the server run command for HuggingFace Spaces
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run_server(debug=False, host='0.0.0.0', port=port)
+    app.run_server(debug=False, host="0.0.0.0", port=7860)
