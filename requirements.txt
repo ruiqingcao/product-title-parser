@@ -7,3 +7,5 @@ sentence-transformers
 scikit-learn
 gliner-spacy
 gunicorn
+transformers
+tokenizers
