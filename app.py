@@ -1,7 +1,7 @@
 import dash
 import dash_bootstrap_components as dbc
 import pandas as pd
-from dash import dcc, html
+from dash import dcc, html, callback_context
 from dash.dash_table import DataTable
 from dash.dependencies import Output, Input, State
 import plotly.express as px
@@ -12,6 +12,7 @@ from gliner_spacy.pipeline import GlinerSpacy
 import warnings
 import os
 
+# Suppress specific warnings
 warnings.filterwarnings("ignore", message="The sentencepiece tokenizer")
 
 # Initialize Dash app with Bootstrap theme and Font Awesome
@@ -27,53 +28,78 @@ CATEGORIES_FILE = os.path.join(BASE_DIR, 'google_categories(v2).txt')
 # Configuration for GLiNER integration
 custom_spacy_config = {
     "gliner_model": "urchade/gliner_small-v2.1",
-    "chunk_size": 250,
+    "chunk_size": 128,
     "labels": ["person", "organization", "location", "event", "work_of_art", "product", "service", "date", "number", "price", "address", "phone_number", "misc"],
-    "style": "ent",
-    "threshold": 0.3
+    "threshold": 0.5
 }
 
-# Model variables
+# Model variables for lazy loading
 nlp = None
 sentence_model = None
 
-# Function to load models
-def load_models():
-    global nlp, sentence_model
-    nlp = spacy.blank("en")
-    nlp.add_pipe("gliner_spacy", config=custom_spacy_config)
-    sentence_model = SentenceTransformer('all-roberta-large-v1')
+# Function to lazy load NLP model
+def get_nlp():
+    global nlp
+    if nlp is None:
+        try:
+            nlp = spacy.blank("en")
+            nlp.add_pipe("gliner_spacy", config=custom_spacy_config)
+        except Exception as e:
+            raise
+    return nlp
+
+# Function to lazy load sentence transformer model
+def get_sentence_model():
+    global sentence_model
+    if sentence_model is None:
+        sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+    return sentence_model
 
 # Load Google's content categories
-with open(CATEGORIES_FILE, 'r') as f:
-    google_categories = [line.strip() for line in f]
+try:
+    with open(CATEGORIES_FILE, 'r') as f:
+        google_categories = [line.strip() for line in f]
+except Exception as e:
+    google_categories = []
 
 # Function to perform NER using GLiNER with spaCy
 def perform_ner(text):
-    doc = nlp(text)
-    return [(ent.text, ent.label_) for ent in doc.ents]
+    try:
+        doc = get_nlp()(text)
+        return [(ent.text, ent.label_) for ent in doc.ents]
+    except Exception as e:
+        return []
 
 # Function to extract entities using GLiNER with spaCy
 def extract_entities(text):
-    doc = nlp(text)
-    entities = [(ent.text, ent.label_) for ent in doc.ents]
-    return entities if entities else ["No specific entities found"]
+    try:
+        doc = get_nlp()(text)
+        entities = [(ent.text, ent.label_) for ent in doc.ents]
+        return entities if entities else ["No specific entities found"]
+    except Exception as e:
+        return ["Error extracting entities"]
 
 # Function to precompute category embeddings
 def compute_category_embeddings():
-    return sentence_model.encode(google_categories)
+    try:
+        return get_sentence_model().encode(google_categories)
+    except Exception as e:
+        return []
 
 # Function to perform topic modeling using sentence transformers
 def perform_topic_modeling_from_similarities(similarities):
-    top_indices = similarities.argsort()[-3:][::-1]
-    
-    best_match = google_categories[top_indices[0]]
-    second_best = google_categories[top_indices[1]]
-    
-    if similarities[top_indices[0]] > similarities[top_indices[1]] * 1.1:
-        return best_match
-    else:
-        return f"{best_match} , {second_best}"
+    try:
+        top_indices = similarities.argsort()[-3:][::-1]
+        
+        best_match = google_categories[top_indices[0]]
+        second_best = google_categories[top_indices[1]]
+        
+        if similarities[top_indices[0]] > similarities[top_indices[1]] * 1.1:
+            return best_match
+        else:
+            return f"{best_match} , {second_best}"
+    except Exception as e:
+        return "Error in topic modeling"
 
 # Function to sort keywords by intent feature
 def sort_by_keyword_feature(f):
@@ -145,45 +171,49 @@ def sort_by_keyword_feature(f):
     return "other"
 
 # Optimized batch processing of keywords
-def batch_process_keywords(keywords, batch_size=32):
+def batch_process_keywords(keywords, batch_size=16):
     processed_data = {'Keywords': [], 'Intent': [], 'NER Entities': [], 'Google Content Topics': []}
     
-    # Precompute keyword embeddings once
-    keyword_embeddings = sentence_model.encode(keywords, batch_size=batch_size, show_progress_bar=True)
+    try:
+        # Precompute keyword embeddings once
+        keyword_embeddings = get_sentence_model().encode(keywords, batch_size=batch_size, show_progress_bar=False)
+        
+        # Compute category embeddings
+        category_embeddings = compute_category_embeddings()
+        
+        for i in range(0, len(keywords), batch_size):
+            batch = keywords[i:i+batch_size]
+            batch_embeddings = keyword_embeddings[i:i+batch_size]
+            
+            # Batch process intents
+            intents = [sort_by_keyword_feature(kw) for kw in batch]
+            
+            # Batch process entities
+            entities = [extract_entities(kw) for kw in batch]
+            
+            # Batch process topics
+            similarities = cosine_similarity(batch_embeddings, category_embeddings)
+            Google_Content_Topics = [perform_topic_modeling_from_similarities(sim) for sim in similarities]
+            
+            processed_data['Keywords'].extend(batch)
+            processed_data['Intent'].extend(intents)
+            
+            # Convert entities to strings, handling both tuples and strings
+            processed_entities = []
+            for entity_list in entities:
+                entity_strings = []
+                for entity in entity_list:
+                    if isinstance(entity, tuple):
+                        entity_strings.append(f"{entity[0]} ({entity[1]})")
+                    else:
+                        entity_strings.append(str(entity))
+                processed_entities.append(", ".join(entity_strings))
+            
+            processed_data['NER Entities'].extend(processed_entities)
+            processed_data['Google Content Topics'].extend(Google_Content_Topics)
     
-    # Compute category embeddings
-    category_embeddings = compute_category_embeddings()
-    
-    for i in range(0, len(keywords), batch_size):
-        batch = keywords[i:i+batch_size]
-        batch_embeddings = keyword_embeddings[i:i+batch_size]
-        
-        # Batch process intents
-        intents = [sort_by_keyword_feature(kw) for kw in batch]
-        
-        # Batch process entities
-        entities = [extract_entities(kw) for kw in batch]
-        
-        # Batch process topics
-        similarities = cosine_similarity(batch_embeddings, category_embeddings)
-        Google_Content_Topics = [perform_topic_modeling_from_similarities(sim) for sim in similarities]
-        
-        processed_data['Keywords'].extend(batch)
-        processed_data['Intent'].extend(intents)
-        
-        # Convert entities to strings, handling both tuples and strings
-        processed_entities = []
-        for entity_list in entities:
-            entity_strings = []
-            for entity in entity_list:
-                if isinstance(entity, tuple):
-                    entity_strings.append(f"{entity[0]} ({entity[1]})")
-                else:
-                    entity_strings.append(str(entity))
-            processed_entities.append(", ".join(entity_strings))
-        
-        processed_data['NER Entities'].extend(processed_entities)
-        processed_data['Google Content Topics'].extend(Google_Content_Topics)
+    except Exception as e:
+        pass
     
     return processed_data
 
@@ -206,12 +236,6 @@ app.layout = dbc.Container([
 
     dbc.Row([
         dbc.Col([
-            dbc.Alert(
-                "Models are loading. This may take a few minutes. Please wait...",
-                id="loading-alert",
-                color="info",
-                is_open=True,
-            ),
             dbc.Label('Enter keywords (one per line, maximum of 100):', className='text-light'),
             dcc.Textarea(id='keyword-input', value='', style={'width': '100%', 'height': 100}),
             dbc.Button('Submit', id='submit-button', color='primary', className='mb-3', disabled=True),
@@ -220,20 +244,16 @@ app.layout = dbc.Container([
         ], width=6)
     ], justify='center'),
     
-    # Loading component
     dbc.Row([
         dbc.Col([
             dcc.Loading(
                 id="loading",
                 type="default",
-                children=[
-                    html.Div([
-                        html.Div(id="loading-output")
-                    ], className="my-4")
-                ],
+                children=[html.Div(id="loading-output", className="my-4")]
             ),
         ], width=12)
-    ], justify='center', className="mb-4"),  # Added margin-bottom for separation
+    ], justify='center', className="mb-4"),
+
     dbc.Row(dbc.Col(dcc.Graph(id='bar-chart'), width=12)),
 
     dbc.Row([
@@ -261,7 +281,7 @@ app.layout = dbc.Container([
     dcc.Download(id='download'),
     dcc.Store(id='processed-data'),
 
-    # Explanation content
+# Explanation content
     dbc.Row([
         dbc.Col([
             html.Div([
@@ -340,75 +360,52 @@ app.layout = dbc.Container([
 
 ], fluid=True)
 
-# Callback to load models and update the loading alert
+# Combined callback
 @app.callback(
     [Output('models-loaded', 'data'),
-     Output('loading-alert', 'is_open'),
-     Output('submit-button', 'disabled')],
-    [Input('models-loaded', 'data')]
-)
-def load_models_callback(loaded):
-    if not loaded:
-        load_models()
-        return True, False, False
-    return loaded, False, False
-
-# Callback for smooth scrolling
-app.clientside_callback(
-    """
-    function(n_clicks) {
-        const links = document.querySelectorAll('a[href^="#"]');
-        links.forEach(link => {
-            link.addEventListener('click', function(e) {
-                e.preventDefault();
-                const targetId = this.getAttribute('href').substring(1);
-                const targetElement = document.getElementById(targetId);
-                if (targetElement) {
-                    targetElement.scrollIntoView({behavior: 'smooth'});
-                }
-            });
-        });
-        return '';
-    }
-    """,
-    Output('dummy-output', 'children'),
-    Input('dummy-input', 'children')
-)
-
-# All other callbacks
-@app.callback(
-    Output('alert', 'is_open'),
-    Output('alert', 'children'),
-    [Input('submit-button', 'n_clicks')],
-    [State('keyword-input', 'value')]
-)
-def limit_keywords(n_clicks, keyword_input):
-    if n_clicks is None:
-        return False, ""
-    
-    keywords = keyword_input.split('\n')
-    if len(keywords) > 100:
-        return True, "Maximum limit of 100 keywords exceeded. Only the first 100 keywords will be processed."
-    
-    return False, ""
-
-@app.callback(
-    [Output('processed-data', 'data'),
+     Output('submit-button', 'disabled'),
+     Output('alert', 'is_open'),
+     Output('alert', 'children'),
+     Output('alert', 'color'),
+     Output('processed-data', 'data'),
      Output('loading-output', 'children'),
      Output('processing-alert', 'is_open'),
      Output('processing-alert', 'children')],
-    [Input('submit-button', 'n_clicks')],
+    [Input('models-loaded', 'data'),
+     Input('submit-button', 'n_clicks')],
     [State('keyword-input', 'value')]
 )
-def process_keywords(n_clicks, keyword_input):
+def combined_callback(loaded, n_clicks, keyword_input):
+    ctx = callback_context
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if triggered_id == 'models-loaded':
+        return handle_model_loading(loaded)
+    elif triggered_id == 'submit-button':
+        return handle_keyword_processing(n_clicks, keyword_input)
+    else:
+        # Default return values
+        return loaded, False, False, "", "success", None, '', False, ''
+
+def handle_model_loading(loaded):
+    if not loaded:
+        try:
+            # Lazy loading will occur when models are first used
+            return True, False, True, "Models ready to load", "success", None, '', False, ''
+        except Exception as e:
+            return False, True, True, f"Error preparing models: {str(e)}", "danger", None, '', False, ''
+    return loaded, not loaded, False, "", "success", None, '', False, ''
+
+def handle_keyword_processing(n_clicks, keyword_input):
     if n_clicks is None or not keyword_input:
-        return None, '', False, ''
+        return True, False, False, "", "success", None, '', False, ''
 
     keywords = [kw.strip() for kw in keyword_input.split('\n')[:100] if kw.strip()]
     processed_data = batch_process_keywords(keywords)
 
-    return processed_data, '', True, "Keyword processing complete!"
+    return True, False, False, "", "success", processed_data, '', True, "Keyword processing complete!"
 
+# Callback for updating the bar chart
 @app.callback(
     Output('bar-chart', 'figure'),
     [Input('processed-data', 'data')]
@@ -418,7 +415,7 @@ def update_bar_chart(processed_data):
         return {
             'data': [],
             'layout': {
-                'height': 0,  # Set height to 0 when there's no data
+                'height': 0,
                 'annotations': [{
                     'text': '',
                     'xref': 'paper',
@@ -441,7 +438,7 @@ def update_bar_chart(processed_data):
         plot_bgcolor='#222222',
         paper_bgcolor='#222222',
         font_color='white',
-        height=400,  # Set a fixed height for the chart
+        height=400,
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -453,6 +450,7 @@ def update_bar_chart(processed_data):
 
     return fig
 
+# Callback for updating the dropdown and download button
 @app.callback(
     [Output('table-intent-dropdown', 'options'),
      Output('download-button', 'disabled')],
@@ -467,6 +465,7 @@ def update_dropdown_and_button(processed_data):
     options = [{'label': intent, 'value': intent} for intent in intents]
     return options, False
 
+# Callback for updating the keywords table
 @app.callback(
     Output('keywords-table', 'children'),
     [Input('table-intent-dropdown', 'value')],
@@ -492,6 +491,7 @@ def update_keywords_table(selected_intent, processed_data):
     )
     return table
 
+# Callback for downloading CSV
 @app.callback(
     Output('download', 'data'),
     [Input('download-button', 'n_clicks')],
