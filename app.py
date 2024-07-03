@@ -11,14 +11,13 @@ from sklearn.metrics.pairwise import cosine_similarity
 from gliner_spacy.pipeline import GlinerSpacy
 import warnings
 import os
+import gc
 
 # Suppress specific warnings
 warnings.filterwarnings("ignore", message="The sentencepiece tokenizer")
 
-# Initialize Dash app with Bootstrap theme and Font Awesome
+# Initialize Dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, 'https://use.fontawesome.com/releases/v5.8.1/css/all.css'])
-
-# Create server variable
 server = app.server
 
 # Reference absolute file path 
@@ -36,6 +35,7 @@ custom_spacy_config = {
 # Model variables for lazy loading
 nlp = None
 sentence_model = None
+google_categories = []
 
 # Function to lazy load NLP model
 def get_nlp():
@@ -56,11 +56,15 @@ def get_sentence_model():
     return sentence_model
 
 # Load Google's content categories
-try:
-    with open(CATEGORIES_FILE, 'r') as f:
-        google_categories = [line.strip() for line in f]
-except Exception as e:
-    google_categories = []
+def load_google_categories():
+    global google_categories
+    if not google_categories:
+        try:
+            with open(CATEGORIES_FILE, 'r') as f:
+                google_categories = [line.strip() for line in f]
+        except Exception as e:
+            google_categories = []
+    return google_categories
 
 # Function to perform NER using GLiNER with spaCy
 def perform_ner(text):
@@ -82,17 +86,19 @@ def extract_entities(text):
 # Function to precompute category embeddings
 def compute_category_embeddings():
     try:
-        return get_sentence_model().encode(google_categories)
+        categories = load_google_categories()
+        return get_sentence_model().encode(categories)
     except Exception as e:
         return []
 
 # Function to perform topic modeling using sentence transformers
 def perform_topic_modeling_from_similarities(similarities):
     try:
+        categories = load_google_categories()
         top_indices = similarities.argsort()[-3:][::-1]
         
-        best_match = google_categories[top_indices[0]]
-        second_best = google_categories[top_indices[1]]
+        best_match = categories[top_indices[0]]
+        second_best = categories[top_indices[1]]
         
         if similarities[top_indices[0]] > similarities[top_indices[1]] * 1.1:
             return best_match
@@ -171,34 +177,26 @@ def sort_by_keyword_feature(f):
     return "other"
 
 # Optimized batch processing of keywords
-def batch_process_keywords(keywords, batch_size=16):
+def batch_process_keywords(keywords, batch_size=8):
     processed_data = {'Keywords': [], 'Intent': [], 'NER Entities': [], 'Google Content Topics': []}
     
     try:
-        # Precompute keyword embeddings once
-        keyword_embeddings = get_sentence_model().encode(keywords, batch_size=batch_size, show_progress_bar=False)
-        
-        # Compute category embeddings
+        sentence_model = get_sentence_model()
         category_embeddings = compute_category_embeddings()
         
         for i in range(0, len(keywords), batch_size):
             batch = keywords[i:i+batch_size]
-            batch_embeddings = keyword_embeddings[i:i+batch_size]
+            batch_embeddings = sentence_model.encode(batch, batch_size=batch_size, show_progress_bar=False)
             
-            # Batch process intents
             intents = [sort_by_keyword_feature(kw) for kw in batch]
-            
-            # Batch process entities
             entities = [extract_entities(kw) for kw in batch]
             
-            # Batch process topics
             similarities = cosine_similarity(batch_embeddings, category_embeddings)
             Google_Content_Topics = [perform_topic_modeling_from_similarities(sim) for sim in similarities]
             
             processed_data['Keywords'].extend(batch)
             processed_data['Intent'].extend(intents)
             
-            # Convert entities to strings, handling both tuples and strings
             processed_entities = []
             for entity_list in entities:
                 entity_strings = []
@@ -211,6 +209,9 @@ def batch_process_keywords(keywords, batch_size=16):
             
             processed_data['NER Entities'].extend(processed_entities)
             processed_data['Google Content Topics'].extend(Google_Content_Topics)
+            
+            # Force garbage collection
+            gc.collect()
     
     except Exception as e:
         pass
@@ -226,7 +227,7 @@ app.layout = dbc.Container([
             dbc.NavItem(dbc.NavLink("Contact", href="#contact")),
         ],
         brand="KeyIntentNER-T",
-        brand_href="https://jeredhiggins.com/keyintentnert",
+        brand_href="https://github.com/jeredhiggins/KeyIntentNER-T",
         color="#151515",
         dark=True,
         brand_style={"background": "linear-gradient(to right, #ff7e5f, #feb47b)", "-webkit-background-clip": "text", "color": "transparent", "textShadow": "0 0 1px #ffffff, 0 0 3px #ff7e5f, 0 0 5px #ff7e5f"},
@@ -506,5 +507,5 @@ def download_csv(n_clicks, processed_data):
     return dict(content=csv_string, filename="KeyIntentNER-T_keyword_analysis.csv")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))  # Default to 10000 if PORT is not set
-    app.run_server(debug=True, host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 10000))
+    app.run_server(debug=False, host='0.0.0.0', port=port)
