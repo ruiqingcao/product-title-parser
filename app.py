@@ -12,6 +12,10 @@ from gliner_spacy.pipeline import GlinerSpacy
 import warnings
 import os
 import gc
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Suppress specific warnings
 warnings.filterwarnings("ignore", message="The sentencepiece tokenizer")
@@ -42,9 +46,12 @@ def get_nlp():
     global nlp
     if nlp is None:
         try:
+            logger.info("Loading spaCy model")
             nlp = spacy.blank("en")
             nlp.add_pipe("gliner_spacy", config=custom_spacy_config)
+            logger.info("spaCy model loaded successfully")
         except Exception as e:
+            logger.exception("Error loading spaCy model")
             raise
     return nlp
 
@@ -185,7 +192,9 @@ def batch_process_keywords(keywords, batch_size=8):
         category_embeddings = compute_category_embeddings()
         
         for i in range(0, len(keywords), batch_size):
+            logger.info(f"Processing {len(keywords)} keywords")
             batch = keywords[i:i+batch_size]
+            logger.info(f"Processing batch {i//batch_size + 1}")
             batch_embeddings = sentence_model.encode(batch, batch_size=batch_size, show_progress_bar=False)
             
             intents = [sort_by_keyword_feature(kw) for kw in batch]
@@ -212,9 +221,9 @@ def batch_process_keywords(keywords, batch_size=8):
             
             # Force garbage collection
             gc.collect()
-    
+        logger.info("Keyword processing completed successfully")
     except Exception as e:
-        pass
+        logger.exception("An error occurred in batch_process_keywords")
     
     return processed_data
 
@@ -379,7 +388,6 @@ app.layout = dbc.Container([
 
 ], fluid=True)
 
-# Combined callback
 @app.callback(
     [Output('models-loaded', 'data'),
      Output('submit-button', 'disabled'),
@@ -398,13 +406,16 @@ def combined_callback(loaded, n_clicks, keyword_input):
     ctx = callback_context
     triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
-    if triggered_id == 'models-loaded':
-        return handle_model_loading(loaded)
-    elif triggered_id == 'submit-button':
-        return handle_keyword_processing(n_clicks, keyword_input)
-    else:
-        # Default return values
-        return loaded, False, False, "", "success", None, '', False, ''
+    try:
+        if triggered_id == 'models-loaded':
+            return handle_model_loading(loaded)
+        elif triggered_id == 'submit-button':
+            return handle_keyword_processing(n_clicks, keyword_input)
+        else:
+            return loaded, False, False, "", "success", None, '', False, ''
+    except Exception as e:
+        logger.exception("An error occurred in combined_callback")
+        return loaded, False, True, f"An error occurred: {str(e)}", "danger", None, '', False, ''
 
 def handle_model_loading(loaded):
     if not loaded:
@@ -430,7 +441,9 @@ def handle_keyword_processing(n_clicks, keyword_input):
     [Input('processed-data', 'data')]
 )
 def update_bar_chart(processed_data):
+    logger.info("Updating bar chart")
     if processed_data is None:
+        logger.info("No processed data available")
         return {
             'data': [],
             'layout': {
@@ -446,6 +459,7 @@ def update_bar_chart(processed_data):
         }
 
     df = pd.DataFrame(processed_data)
+    logger.info(f"Data shape: {df.shape}")
     intent_counts = df['Intent'].value_counts().reset_index()
     intent_counts.columns = ['Intent', 'Count']
 
