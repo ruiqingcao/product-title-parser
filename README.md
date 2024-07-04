@@ -1,12 +1,32 @@
----
-title: KeyIntentNER T
-emoji: ♾️
-colorFrom: yellow
-colorTo: red
-sdk: docker
-pinned: true
-license: apache-2.0
-short_description: Extract keyword intent, NLP entities, and Google topics
+## Project Metadata
+
+<table>
+  <tr>
+    <td><strong>Title</strong></td>
+    <td>KeyIntentNER T</td>
+  </tr>
+  <tr>
+    <td><strong>Emoji</strong></td>
+    <td>♾️</td>
+  </tr>
+  <tr>
+    <td><strong>Color Scheme</strong></td>
+    <td>Yellow to Red</td>
+  </tr>
+  <tr>
+    <td><strong>SDK</strong></td>
+    <td>Docker</td>
+  </tr>
+  <tr>
+    <td><strong>License</strong></td>
+    <td>Apache 2.0</td>
+  </tr>
+  <tr>
+    <td><strong>Short Description</strong></td>
+    <td>Extract keyword intent, NLP entities, and Google topics</td>
+  </tr>
+</table>
+
 ---
 # KeyIntentNER-T
 KeyIntentNER-T is a tool designed for SEO and digital marketing professionals to provide valuable keyword insights. By entering a list of keywords, you can gain insights into Keyword Intent, NLP Entities extracted via NER (Named Entity Recognition), and Topics. This tool demonstrates how modern NLP methods can be used to understand shorter text strings (keywords) in a way similar to search engines.
