@@ -61,7 +61,7 @@ Buy groceries online with delivery
 average cost of car insurance
 top rated laptops 2024
 Book a flight to Hawaii
-how to fix a leaking faucet
+Where are some good places to hike near me?
 ```
 
 #### Example Plot
