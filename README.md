@@ -25,6 +25,7 @@ product-title-parser is a tool for researchers to quickly classify product keywo
 Matches short text strings to Google's well-known Content and Product taxonomies.
 
 ## Usage
+- Create a virtual environment and pip install the packages in requirements.txt
 - ``` python standardise_google.py [inputfilename] [outputfilename] ```
 - ```[inputfilename]``` contains a list of short text strings (one per line, up to 100 MAX)
 - Results are saved as a CSV file in ```[outputfilename]```
