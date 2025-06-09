@@ -84,7 +84,7 @@ def batch_process_keywords(keywords, batch_size=8):
             similarities = cosine_similarity(batch_embeddings, category_embeddings)
             Google_Content_Topics = [perform_topic_modeling_from_similarities(sim) for sim in similarities]
             cats = [x.split(' , ') for x in Google_Content_Topics]
-            cats = [[category_with_ids[x] for x in item] for item in cats]
+            cats = [[category_with_ids[x] if x in category_with_ids.keys() else None for x in item] for item in cats]
             
             processed_data['Keywords'].extend(batch)
             processed_data['Google Content Topics'].extend(Google_Content_Topics)
